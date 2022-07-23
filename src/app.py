@@ -1,9 +1,10 @@
+import models.request_routes_models as request_models
+import models.response_routes_models as response_models
+import modules.multi_purpose_functions as multi_purpose
 from odooly import Client
 from fastapi import FastAPI, Request, Response, status
-from pydantic import BaseModel, Extra, ValidationError
-from typing import Optional, List
+from pydantic import ValidationError
 from datetime import datetime, date
-import re
 app = FastAPI()
 
 # MUST CHANGE TO THE ENV FILE
@@ -12,121 +13,7 @@ client = Client(server = "http://localhost:8069",
     user = "admin", 
     password = "admin"
 )
-#-----------------------------------------------
-#MULTIPROPOUSE FUNCTIONS
-def multi_comparison(reg_exp, case_sensitive, first_comp, second_comp):
-    if first_comp == None or first_comp==False:
-        first_comp = ''
-    if second_comp==None or second_comp==False:
-        second_comp = ''
-
-    #IF STRING DON'T MATCH, RETURN FALSE
-    #WITH CASE SENSITIVE AND NO REGEXP
-    if not reg_exp and case_sensitive:
-        if first_comp != second_comp:
-            return False
-            
-    #WITH NO CASE SENSITIVE AND NO REGEXP
-    if not reg_exp and not case_sensitive:
-        if first_comp.upper() != second_comp.upper():
-            return False
-            
-    #WITH CASE SENSITIVE AND REGEXP
-    if reg_exp and case_sensitive: 
-        if not re.search(second_comp, first_comp):
-            return False
-            
-    #WITH NO CASE SENSITIVE AND REGEXP
-    if reg_exp and not case_sensitive:
-        if not re.search(second_comp, first_comp.upper()):
-            return False
-           
-    #IF FILTERS PASS, RETURN TRUE
-    return True
-
-def change_false(field):
-    if field == False:
-        return ""
-    else:
-        return field
-#-------------------------------------------------
-
-#REQUEST MODEL TYPING TEMPLATE
-class RoutesFilter(BaseModel, extra=Extra.forbid):
-    route_name: Optional[str] = None
-    route_id: Optional[int] = None
-    partner_name: Optional[str] = None
-    partner_id: Optional[int] = None
-    available: Optional[bool] = True
-    active: Optional[bool] = True
-
-    def __getitem__(self, item):
-        return getattr(self, item)
-
-class RoutesAcceptSearch(BaseModel, extra=Extra.forbid):
-    case_sensitive: Optional[bool] = False
-    reg_exp: Optional[bool] = True
-
-class RoutesRequestModel(BaseModel, extra=Extra.forbid):
-    filters: Optional['RoutesFilter'] = None
-    order_by: Optional[str] = None
-    accept: Optional['RoutesAcceptSearch'] = None
-   
-#RESPONSE MODEL TYPING TEMPLATE
-class PartnerInfo(BaseModel, extra=Extra.forbid):
-    partner_id: Optional[int] = None
-    partner_name: Optional[str] = None
-
-class DriverInfo(BaseModel, extra=Extra.forbid):
-    driver_id: Optional[int] = None
-    driver_full_name: Optional[str] = "Not defined yet"
-
-class VechicleInfo(BaseModel, extra=Extra.forbid):
-    vehicle_id: Optional[int] = None 
-    vin: Optional[str] = None
-    plate: Optional[str] = None
-    brand: Optional[str] = None
-    model: Optional[str] = None
-
-class StationInfo(BaseModel, extra=Extra.forbid):
-    station_id: Optional[int] = None
-    station_name: Optional[str] = None
-    address: Optional[str] = None
-    lat: Optional[str] = None
-    lon: Optional[str] = None
-
-class TripStation(BaseModel, extra=Extra.forbid, arbitrary_types_allowed=True):
-    station_id: Optional[int] = None
-    init_date: Optional[str] = None 
-
-class Rating(BaseModel, extra=Extra.forbid):
-    commenter: Optional[str] = None
-    score: Optional[int] = None
-    comment: Optional[str] = None
-
-class TripInfo(BaseModel, extra=Extra.forbid, arbitrary_types_allowed=True):
-    vehicle: Optional['VechicleInfo'] = None
-    driver: Optional['DriverInfo'] = None
-    init_date: Optional[str] = None
-    end_date: Optional[str] = None
-    seats: Optional[int] = None
-    stations_schedule: Optional[List['TripStation']] = None
-    ratings: Optional[List['Rating']] = None
-
-class RouteInfo(BaseModel, extra=Extra.forbid, arbitrary_types_allowed=True):
-    name: Optional[str] = None
-    partner: Optional[PartnerInfo] = None
-    zone: Optional[str] = None
-    code:  Optional[str] = None
-    init_date: Optional[str] = None
-    end_date: Optional[str] = None 
-    stations: Optional[List['StationInfo']] = None
-    trips: Optional[List['TripInfo']] = None
-
-class RoutesResponse(BaseModel, extra=Extra.forbid):
-    DESCRIPTION: Optional[str] = "OK"
-    routes: Optional[List['RouteInfo']] = None
-
+  
     
 #ENDPOINTS
 @app.get('/get_routes')
@@ -144,13 +31,17 @@ async def get_routes(request: Request,
 
     #MATCH THE REQUEST TO THE MODEL
     try:
-        req_validation = RoutesRequestModel(**req)
+        req_validation = request_models.RoutesRequestModel(**req)
     except ValidationError as e:
         for error in e.errors():
+            response.status_code = status.HTTP_400_BAD_REQUEST
             if str(error['type'])=="value_error.extra":
-                response.status_code = status.HTTP_400_BAD_REQUEST
                 return {
                     "DESCRIPTION": f"{error['loc']} field(s) are not accepted in this endpoint"
+                }
+            elif str(error['type'])=="value_error":
+                return {
+                    "DESCRIPTION": str(error['msg'])
                 }
 
     #TRY TO READ THE ODOO ROUTE'S MODEL
@@ -183,22 +74,30 @@ async def get_routes(request: Request,
     enabled_filters = []
     if req_validation.filters != None:
         for _filter in req_validation.filters.__fields__.keys():
+            print(_filter)
             if req_validation.filters[_filter] != None and req_validation.filters[_filter] != False:
+                print("enabled")
                 enabled_filters.append(_filter)
+
+    #print(f"enabled -> {enabled_filters}")
+    #print(f"fields -> {req_validation.filters.__fields__.keys()}")
 
     #ITERATE OVER ALL RECORDS
     for index, route in enumerate(routes):
         #SEARCH PARTNER DATA
-        partner = client.env['res.partner'].search([('id', '=', route.partner.id)])
-        #GET THE ONLY PARTNER
-        if len(partner)==1:
-            partner = partner[0]
+        if route.partner != False:
+            partner = client.env['res.partner'].search([('id', '=', route.partner.id)])
+            #GET THE ONLY PARTNER
+            if len(partner)==1:
+                partner = partner[0]
+            else:
+                partner = None
         else:
-            partner = None
+            partner = ""
         #CHECK ROUTE NAME
         #WHERE CONDITION DON'T MEET, REMOVE
         if 'route_name' in enabled_filters:
-            if not multi_comparison(reg_exp = reg_exp, 
+            if not multi_purpose.multi_comparison(reg_exp = reg_exp, 
                 case_sensitive = case_sensitive, 
                 first_comp = route.name, 
                 second_comp = req_validation.filters.route_name
@@ -206,13 +105,14 @@ async def get_routes(request: Request,
                 routes = list(filter(lambda x: x.id != route.id ,routes))
                 continue
         #CHECK ROUTE ID
+        print()
         if 'route_id' in enabled_filters:
-            if route.id != request['filters']['route_id']:
+            if route.id != req_validation.filters.route_id:
                 routes = list(filter(lambda x: x.id != route.id ,routes))
                 continue
         #CHECK PARTNER NAME
         if 'partner_name' in enabled_filters:
-            if not multi_comparison(reg_exp = reg_exp,
+            if not multi_purpose.multi_comparison(reg_exp = reg_exp,
                 case_sensitive = case_sensitive,
                 first_comp = partner.name,
                 second_comp = req_validation.filters.partner_name
@@ -221,7 +121,7 @@ async def get_routes(request: Request,
                 continue
         #CHECK PARTNER ID
         if 'partner_id' in enabled_filters:
-            if route.id != request.filters.partner_id:
+            if route.id != req_validation.filters.partner_id:
                 routes = list(filter(lambda x: x.id != route.id ,routes))
                 continue
         #CHECK IF ROUTE AVAILABLE
@@ -241,8 +141,9 @@ async def get_routes(request: Request,
                 continue
 
     #ITERATE OVER THE ROUTES AT THE END OF FILTERS
-    resp = RoutesResponse(routes = [])
+    resp = response_models.RoutesResponse(routes = [])
     for route in routes:
+        route_id = route.id
         #SET NAME FIELD
         if route.name == False:
             name = ''
@@ -250,10 +151,10 @@ async def get_routes(request: Request,
             name = route.name
         #SET PARTNER FIELD
         if route.partner == False:
-            partner_info = PartnerInfo(partner_id = None,
+            partner_info = response_models.PartnerInfo(partner_id = None,
                 partner_name = 'Undefined')
         else:
-            partner_info = PartnerInfo(partner_id = route.partner.id,
+            partner_info = response_models.PartnerInfo(partner_id = route.partner.id,
                 partner_name = route.partner.name)
         #SET ZONE FIELD
         if route.zone == False:
@@ -300,7 +201,7 @@ async def get_routes(request: Request,
                 station_longitude = station.longitude
 
             stations.append(
-                StationInfo(
+                response_models.StationInfo(
                     station_id = station_id,
                     station_name = station_name,
                     address = station_address,
@@ -315,41 +216,41 @@ async def get_routes(request: Request,
             ratings = []
             for rating in trip.comments:
                 ratings.append(
-                    Rating(
-                        commenter = change_false(rating.commenter),
-                        score = change_false(rating.score),
-                        comment = change_false(rating.comment)
+                    response_models.Rating(
+                        commenter = multi_purpose.change_false(rating.commenter),
+                        score = multi_purpose.change_false(rating.score),
+                        comment = multi_purpose.change_false(rating.comment)
                     )
                 )
             stations_schedule = []
             for station in trip.stations:
                 if station.station_name == False:
                     stations_schedule.append(
-                        TripStation(
+                        response_models.TripStation(
                             station_id = None,
                             init_date = ""
                         )
                     )
                 else:
                     stations_schedule.append(
-                        TripStation(
-                            station_id = change_false(station.station_name.id),
-                            init_date = change_false(station.start_hour)
+                        response_models.TripStation(
+                            station_id = multi_purpose.change_false(station.station_name.id),
+                            init_date = multi_purpose.change_false(station.start_hour)
                         )
                     )
             if trip.driver_id == False:
-                driver =DriverInfo(
+                driver = response_models.DriverInfo(
                     driver_id = None,
                     driver_full_name = "Not defined yet"
                 )
             else:
-                driver = DriverInfo(
-                    driver_id = change_false(trip.driver_id.id),
-                    driver_full_name = f"{change_false(trip.driver_id.name)} {change_false(trip.driver_id.last_name)}".strip()
+                driver = response_models.DriverInfo(
+                    driver_id = multi_purpose.change_false(trip.driver_id.id),
+                    driver_full_name = f"{multi_purpose.change_false(trip.driver_id.name)} {multi_purpose.change_false(trip.driver_id.last_name)}".strip()
                 )
 
             if trip.vehicle_id == False:
-                vehicle = VechicleInfo(
+                vehicle = response_models.VechicleInfo(
                     vehicle_id = None,
                     vin = "",
                     plate = "",
@@ -358,20 +259,20 @@ async def get_routes(request: Request,
                 )
 
             else:
-                vehicle = VechicleInfo(
-                    vehicle_id = change_false(trip.vehicle_id.id),
-                    vin = change_false(trip.vehicle_id.vin_sn),
-                    plate = change_false(trip.vehicle_id.licence_plate),
-                    brand = change_false(trip.vehicle_id.model_id.brand_id.name),
-                    model = change_false(trip.vehicle_id.model_id.name)
+                vehicle = response_models.VechicleInfo(
+                    vehicle_id = multi_purpose.change_false(trip.vehicle_id.id),
+                    vin = multi_purpose.change_false(trip.vehicle_id.vin_sn),
+                    plate = multi_purpose.change_false(trip.vehicle_id.licence_plate),
+                    brand = multi_purpose.change_false(trip.vehicle_id.model_id.brand_id.name),
+                    model = multi_purpose.change_false(trip.vehicle_id.model_id.name)
                 )
             
 
-            trips.append(TripInfo(
+            trips.append(response_models.TripInfo(
                 vehicle = vehicle,
                 driver = driver,
-                init_date = change_false(trip.startDate),
-                end_date = change_false(trip.endDate),
+                init_date = multi_purpose.change_false(trip.startDate),
+                end_date = multi_purpose.change_false(trip.endDate),
                 seats = trip.seats,
                 stations_schedule = stations_schedule,
                 ratings = ratings
@@ -380,7 +281,8 @@ async def get_routes(request: Request,
 
 
         resp.routes.append(
-            RouteInfo(
+            response_models.RouteInfo(
+                route_id = route_id,
                 name = name,
                 partner = partner_info,
                 zone = zone,

@@ -1,4 +1,4 @@
-/*
-/*/
-!/src/
-
+/**
+!/.gitignore
+!/src/**
+/src/**__pycache__**
