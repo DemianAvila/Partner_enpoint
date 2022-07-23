@@ -1,11 +1,11 @@
-import models.request_routes_models as request_models
-import models.response_routes_models as response_models
-import modules.multi_purpose_functions as multi_purpose
+from .models import request_routes_models as request_models
+from .models import response_routes_models as response_models
+from .modules import multi_purpose_functions as multi_purpose
 from odooly import Client
-from fastapi import FastAPI, Request, Response, status
+from fastapi import APIRouter, Request, Response, status
 from pydantic import ValidationError
 from datetime import datetime, date
-app = FastAPI()
+router = APIRouter()
 
 # MUST CHANGE TO THE ENV FILE
 client = Client(server = "http://localhost:8069", 
@@ -16,7 +16,7 @@ client = Client(server = "http://localhost:8069",
   
     
 #ENDPOINTS
-@app.get('/get_routes')
+@router.get('/get_routes')
 async def get_routes(request: Request, 
     response: Response):
     #TRY TO GET THE REQUEST BODY
