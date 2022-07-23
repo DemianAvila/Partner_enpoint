@@ -1,4 +1,6 @@
 /**
+/src/__pycache__/
 !/.gitignore
 !/src/**
-/src/**__pycache__**
+!/src/models/**
+!/src/modules/**
