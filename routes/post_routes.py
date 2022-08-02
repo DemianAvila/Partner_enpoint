@@ -158,9 +158,11 @@ async def post_routes(request: Request,
                 "DESCRIPTION": f"End date {req_validation.end_date} cannot be bigger than init date {req_validation.init_date}"
             }
 
-
+    
     #ONCE VALIDATED, EMPTY THE DATA IN MODEL
     odoo_create = {}
+    #ASSOCIATE STATIONS WITH ROUTE
+    #odoo_create["stations"] = tuple(stations_id) if len(stations_id)>0 else False
     #NAME
     if req_validation.name == None:
         odoo_create["name"] = False
@@ -206,9 +208,25 @@ async def post_routes(request: Request,
 
     #CREATE RECORD IN ODOO
     record_id = client.env["trx_bus_traxi.routes"].create(odoo_create)
+    
+    #VALIDATE AND CONCENTRATE STATIONS
+    stations_id = []
+    for station in req_validation.stations:
+        #CREATE THOSE STATIONS
+        new_station_id = client.env["trx_bus_traxi.stations"].create(
+            {
+                "name": False if station.name == None else station.name,
+                "address": False if station.address == None else station.address,
+                "latitude": False if station.lat == None else station.lat,
+                "longitude": False if station.lon == None else station.lon,
+                "route_id": record_id.id
+            }
+        )
+        stations_id.append(new_station_id.id)
 
 
     response.status_code = status.HTTP_200_OK
     return {
         "route_created_id": record_id.id
+        #"exit": 0
     }
