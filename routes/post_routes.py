@@ -3,6 +3,7 @@ from odooly import Client
 from fastapi import APIRouter, Request, Response, status, Depends
 from pydantic import ValidationError
 from datetime import datetime, date
+from .modules import multi_purpose_functions as func
 
 router = APIRouter(tags=["Routes"])
 
@@ -97,34 +98,117 @@ async def post_routes(request: Request,
                             "DESCRIPTION": f"There is already a route with the name '{req_name}' for partner {partners.id}"
                         }
                 #FILTER RESULTS BY ROUTE CODE
-                if not req_validation.ignored_repeated.name:
-                    if req_validation.name == None:
-                        req_name = ""
+                if not req_validation.ignored_repeated.code:
+                    if req_validation.code == None:
+                        req_code = ""
                     else:
-                        req_name = req_validation.name
-                    modified_routes = list(
+                        req_code = req_validation.code
+                    print(routes[2].code)
+                    modified_codes = list(
                         map(
-                            lambda x: "" if x.name==False else x.name,
+                            lambda x: "" if x.code==False else x.code,
                             list(routes)
                         )
                     )
+                    print(modified_codes)
                     by_name = list(
                         filter(
-                            lambda x: x == req_name,
-                            list(modified_routes)
+                            lambda x: x == req_code,
+                            list(modified_codes)
                         )
                     )
 
                     if len(by_name) > 0:
                         response.status_code = status.HTTP_400_BAD_REQUEST
                         return {
-                            "DESCRIPTION": f"There is already a route with the name '{req_name}' for partner {partners.id}"
+                            "DESCRIPTION": f"There is already a route with the code '{req_code}' for partner {partners.id}"
                         }
 
 
-        
-    print(req_validation)    
+    #VALIDATE DATES
+    if req_validation.init_date != None:
+        init_validation = func.validate_date(req_validation.init_date ,datetime)
+        if init_validation["ERROR"]:
+            response.status_code = status.HTTP_400_BAD_REQUEST
+            return {
+                "DESCRIPTION": f"On init_date {init_validation['DESCRIPTION']}"
+            }
+        else:
+            init_validation = init_validation["DATE"]
+    else:
+        init_validation = ""
+
+    if req_validation.end_date != None:
+        end_validation = func.validate_date(req_validation.end_date ,datetime)
+        if end_validation["ERROR"]:
+            response.status_code = status.HTTP_400_BAD_REQUEST
+            return {
+                "DESCRIPTION": f"On end_date {end_validation['DESCRIPTION']}"
+            }
+        else:
+            end_validation = end_validation ["DATE"]
+    else:
+        end_validation = ""
+    
+    #CHECK IF END DATE IS PREVIOUS TO INIT IN WHICH CASE THAT'S AN ERROR
+    if type(init_validation) == type(end_validation):
+        if end_validation < init_validation:
+            response.status_code = status.HTTP_400_BAD_REQUEST
+            return {
+                "DESCRIPTION": f"End date {req_validation.end_date} cannot be bigger than init date {req_validation.init_date}"
+            }
+
+
+    #ONCE VALIDATED, EMPTY THE DATA IN MODEL
+    odoo_create = {}
+    #NAME
+    if req_validation.name == None:
+        odoo_create["name"] = False
+    else:
+        odoo_create["name"]  = req_validation.name
+
+    #PARTNER ID
+    if req_validation.partner_id == None:
+        odoo_create["partner"] = False
+    else:
+        odoo_create["partner"] = req_validation.partner_id
+
+    #ZONE
+    if req_validation.zone == None:
+        odoo_create["zone"] = False
+    else: 
+        odoo_create["zone"] = req_validation.zone
+
+    #CODE
+    if req_validation.code == None:
+        odoo_create["code"] = False
+    else:
+        odoo_create ["code"] = req_validation.code
+
+    #INIT DATE
+    if init_validation =="":
+        odoo_create["effectiveDateSince"] = False
+    else:
+        odoo_create["effectiveDateSince"] = init_validation.strftime("%Y-%m-%d")
+
+    #END DATE
+    if end_validation=="":
+        odoo_create["effectiveDateUntil"] = False
+    else:
+        odoo_create["effectiveDateSince"] = end_validation.strftime("%Y-%m-%d")
+
+    #ACTIVE
+    print(req_validation)
+    if req_validation.available:
+        odoo_create["availableRoute"] = "available"
+    else:
+        odoo_create["availableRoute"] = "not available"
+
+    #CREATE RECORD IN ODOO
+    record_id = client.env["trx_bus_traxi.routes"].create(odoo_create)
+
+
     response.status_code = status.HTTP_200_OK
     return {
-        "exit_status": 0
-        }
+        "route_created_id": record_id.id
+    }

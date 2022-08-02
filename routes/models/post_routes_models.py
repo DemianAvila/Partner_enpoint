@@ -17,13 +17,13 @@ class IgnoreRepeated(BaseModel, extra=Extra.forbid):
 
 class PostRoute(BaseModel, extra=Extra.forbid):
     name: Optional[str] = None
-    partner_id: Optional[int]
+    partner_id: Optional[int] = None
     zone: Optional[str] = None
     code: Optional[str] = None
     init_date: Optional[str] = None
     end_date: Optional[str] = None
     ignored_repeated: Optional["IgnoreRepeated"] = IgnoreRepeated()
     stations: Optional[List["Stations"]] = []
-    active: Optional[bool] = False
+    available: Optional[bool] = True
 
 
