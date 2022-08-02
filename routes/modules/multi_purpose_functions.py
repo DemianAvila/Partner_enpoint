@@ -39,4 +39,41 @@ def change_false(field):
         return field
 #-------------------------------------------------
 
+def validate_date(date_string, datetime_module):
+    try:
+        separated_date = list(
+            map(
+                lambda x: int(x.strip()),
+                date_string.split('-')
+            )
+        )
+    except:
+        return {
+            "ERROR": True,
+            "DESCRIPTION": f"The date {date_string} is not valid for parsing"
+        }
+
+    if len(separated_date)!=3:
+        return{
+            "ERROR": True,
+            "DESCRIPTION": f"The date {date_string} is not valid, must be in dd-mm-yyyy format"
+        }
+    else:
+        try:
+            date = datetime_module(
+                day = separated_date[0],
+                month = separated_date[1], 
+                year = separated_date[2]
+            )
+        except: 
+            return {
+                "ERROR": True,
+                "DESCRIPTION": f"Date {date_string} in not a valid date"
+            }
+
+        return{
+            "ERROR": False,
+            "DATE": date
+        }
+
 
