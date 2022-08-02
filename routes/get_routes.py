@@ -2,10 +2,10 @@ from .models import request_routes_models as request_models
 from .models import response_routes_models as response_models
 from .modules import multi_purpose_functions as multi_purpose
 from odooly import Client
-from fastapi import APIRouter, Request, Response, status
+from fastapi import APIRouter, Request, Response, status, Depends
 from pydantic import ValidationError
 from datetime import datetime, date
-router = APIRouter()
+router = APIRouter(tags=["Routes"])
 
 # MUST CHANGE TO THE ENV FILE
 client = Client(server = "http://localhost:8069", 
@@ -18,7 +18,8 @@ client = Client(server = "http://localhost:8069",
 #ENDPOINTS
 @router.get('/get_routes')
 async def get_routes(request: Request, 
-    response: Response):
+    response: Response,
+    commons: request_models.RoutesRequestModel = Depends()):
     #TRY TO GET THE REQUEST BODY
     try:
         req = await request.json()
