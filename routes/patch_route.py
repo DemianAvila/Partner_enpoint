@@ -13,23 +13,24 @@ client = Client(server = "http://localhost:8069",
     password = "admin"                                                                
 )
 
-@router.post('/post_route')
-async def post_routes(request: Request,                                                
-    response: Response,                                                               
-    commons: post_models.PostRoute = Depends()):
+@router.patch('/patch_route')
+async def patch_route(route: post_models.PatchRoute,                                                
+    response: Response):
+    #commons: post_models.PatchRoute = Depends()):
     #TRY TO GET THE REQUEST BODY                                                      
-    try:                                                                              
-        req = await request.json()                                                    
-    except Exception as e:                                                            
-        response.status_code = status.HTTP_408_REQUEST_TIMEOUT                        
-        return {                                                                      
-            "DESCRIPTION": "Timeout, could not get the request",                      
-            "EXCEPTION": str(e)                                                       
-        }
+    #try:                                                                              
+    #    req = await request.json()                                                    
+    #except Exception as e:                                                            
+    #    response.status_code = status.HTTP_408_REQUEST_TIMEOUT                        
+    #    return {                                                                      
+    #        "DESCRIPTION": "Timeout, could not get the request",                      
+    #        "EXCEPTION": str(e)                                                       
+    #    }
 
     #MATCH THE REQUEST TO THE MODEL                                                   
     try:                                                                              
-        req_validation = post_models.PostRoute(**req)                     
+        #req_validation = post_models.PatchRoute(**req)                     
+        req_validation = route
     except ValidationError as e:                                                      
         for error in e.errors():                                                      
             print(str(error['msg']))
@@ -42,6 +43,17 @@ async def post_routes(request: Request,
                 return {                                                              
                     "DESCRIPTION": str(error['msg'])                                  
                 }
+    #CHECK IF THE ROUTE ID EXISTS IN THE DATABASE
+    route_id = client.env['trx_bus_traxi.routes'].search(
+        [("id", "=", req_validation.route_id)]
+    )
+    if len(route_id)!=1:
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {
+            "DESCRIPTION": f"Route with id: '{req_validation.route_id}' not found"
+        }
+    else:
+        route_id = route_id[0]
     #IF PARTNER DOESN'T EXIST, MENTION IT 
     if req_validation.partner_id != None:
         partners = client.env["res.company"].search(
@@ -160,73 +172,82 @@ async def post_routes(request: Request,
 
     
     #ONCE VALIDATED, EMPTY THE DATA IN MODEL
-    odoo_create = {}
+    #odoo_create = {}
     #ASSOCIATE STATIONS WITH ROUTE
     #odoo_create["stations"] = tuple(stations_id) if len(stations_id)>0 else False
     #NAME
     if req_validation.name == None:
-        odoo_create["name"] = False
+        #odoo_create["name"] = False
+        pass
     else:
-        odoo_create["name"]  = req_validation.name
+        route_id.name  = req_validation.name
 
     #PARTNER ID
     if req_validation.partner_id == None:
-        odoo_create["partner"] = False
+        #route_id.partner = False
+        pass
     else:
-        odoo_create["partner"] = req_validation.partner_id
+        route_id.partner = req_validation.partner_id
 
     #ZONE
     if req_validation.zone == None:
-        odoo_create["zone"] = False
+        #route_id.zone = False
+        pass
     else: 
-        odoo_create["zone"] = req_validation.zone
+        route_id.zone = req_validation.zone
 
     #CODE
     if req_validation.code == None:
-        odoo_create["code"] = False
+        #route_id.code = False
+        pass
     else:
-        odoo_create ["code"] = req_validation.code
+        route_id.code = req_validation.code
 
     #INIT DATE
     if init_validation =="":
-        odoo_create["effectiveDateSince"] = False
+        #route_id.effectiveDateSince = False
+        pass
     else:
-        odoo_create["effectiveDateSince"] = init_validation.strftime("%Y-%m-%d")
+        route_id.effectiveDateSince = init_validation.strftime("%Y-%m-%d")
 
     #END DATE
     if end_validation=="":
-        odoo_create["effectiveDateUntil"] = False
+        #route_id.effectiveDateUntil = False
+        pass
     else:
-        odoo_create["effectiveDateSince"] = end_validation.strftime("%Y-%m-%d")
+        route_id.effectiveDateSince = end_validation.strftime("%Y-%m-%d")
 
     #ACTIVE
-    print(req_validation)
     if req_validation.available:
-        odoo_create["availableRoute"] = "available"
+        route_id.availableRoute = "available"
     else:
-        odoo_create["availableRoute"] = "not available"
+        route_id.availableRoute = "not available"
 
+    #THIS WON'T CREATE JUST UPDATE IN THE IFS
     #CREATE RECORD IN ODOO
-    record_id = client.env["trx_bus_traxi.routes"].create(odoo_create)
+    #record_id = client.env["trx_bus_traxi.routes"].create(odoo_create)
     
     #VALIDATE AND CONCENTRATE STATIONS
-    stations_id = []
-    for station in req_validation.stations:
-        #CREATE THOSE STATIONS
-        new_station_id = client.env["trx_bus_traxi.stations"].create(
-            {
-                "name": False if station.name == None else station.name,
-                "address": False if station.address == None else station.address,
-                "latitude": False if station.lat == None else station.lat,
-                "longitude": False if station.lon == None else station.lon,
-                "route_id": record_id.id
-            }
-        )
-        stations_id.append(new_station_id.id)
+    if req_validation.stations == []:
+        pass
+    else:
+        stations_id = []
+        for station in req_validation.stations:
+            #CREATE THOSE STATIONS
+            new_station_id = client.env["trx_bus_traxi.stations"].create(
+                {
+                    "name": False if station.name == None else station.name,
+                    "address": False if station.address == None else station.address,
+                    "latitude": False if station.lat == None else station.lat,
+                    "longitude": False if station.lon == None else station.lon,
+                    "route_id": record_id.id
+                }
+            )
+            stations_id.append(new_station_id.id)
 
 
     response.status_code = status.HTTP_200_OK
     return {
-        "route_created_id": record_id.id
+        "route_updated_id": route_id.id
         #"exit": 0
     }
